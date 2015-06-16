@@ -8,7 +8,13 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 )
+
+// Wikipedia puts the main section of the article
+// within a div tag with the id "mw-content-text"
+// Loop through attributes for an id
+var divId string = "mw-content-text"
 
 type Page struct {
 	Url   *url.URL
@@ -31,7 +37,7 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 
 	z := html.NewTokenizer(body)
 	inBody := false
-	inP := false
+	inP := 0
 	depth := 0
 	for {
 		tt := z.Next()
@@ -47,14 +53,11 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 						depth++
 					} else {
 						// This is a div tag
-						// Wikipedia puts the main section of the article
-						// within a div tag with the id "mw-content-text"
-						// Loop through attributes for an id
 						more := true
 						for more {
 							key, val, m := z.TagAttr()
 							more = m
-							if string(key) == "id" && string(val) == "mw-content-text" {
+							if string(key) == "id" && string(val) == divId {
 								inBody = true
 							}
 						}
@@ -66,11 +69,11 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 				}
 			} else if inBody && string(tn) == "p" {
 				if tt == html.StartTagToken {
-					inP = true
+					inP++
 				} else {
-					inP = false
+					inP--
 				}
-			} else if inP && tt == html.StartTagToken && string(tn) == "a" {
+			} else if inP > 0 && tt == html.StartTagToken && string(tn) == "a" {
 				// This is an anchor tag
 				// This is an anchor tag in a div
 				// Check if it has an href attribute
@@ -140,9 +143,21 @@ func main() {
 				}
 
 				// Don't leave the world of Wikipedia
-				if len(ur.String()) < len(prefix) || ur.String()[:len(prefix)] != prefix {
+				if !strings.HasPrefix(ur.String(), prefix) {
 					return false
 				}
+
+				// check after prefix url
+				str := strings.TrimPrefix(ur.String(), prefix)
+
+				// Cannot be a file, e.g. a resource page
+				// Cannot be a non top-level Wikipedia page
+				// Cannot be a sup page hash link
+				if strings.Contains(str, ":") || strings.Contains(str, "/") || strings.Contains(str, "#") {
+					return false
+				}
+
+
 				return true
 			})
 			if err != nil {
