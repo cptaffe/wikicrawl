@@ -168,12 +168,13 @@ func main() {
 	sig := make(chan os.Signal)
 	signal.Notify(sig, os.Interrupt)
 
-	// Print path
+	// Wait for successful path or sigint
 	select {
 	case <-done:
 	case <-sig:
 	}
 
+	// Print path
 	page := startPage
 	i := 0
 	for page != nil {
