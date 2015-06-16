@@ -94,6 +94,7 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 
 func main() {
 	haveVisited := make(map[url.URL]Page)
+	visits := 0
 
 	var targetPage *Page
 	var startPage *Page
@@ -130,18 +131,34 @@ func main() {
 				}
 				return true
 			})
+			if err != nil {
+				if err.Error() == "EOF" {
+					// Could not find a link on this file,
+					// Go back up one page
+					lp := startPage
+					p := startPage
+					for p.Next != nil {
+						lp = p
+						p = p.Next
+					}
+					if (lp == startPage) {
+						log.Fatal("Cannot find links on provided page")
+					}
+					page = lp
+					visits--
+					continue
+				}
+				log.Fatal(err)
+			}
 			page = pg
 
-			if err != nil {
-				log.Fatal(fmt.Sprintf("Could find link on %s: %s\n", page.Url, err))
-			}
-
-			fmt.Printf("Have Followed %d links\r", len(haveVisited))
+			fmt.Printf("Have Followed %d links\r", visits)
 
 			haveVisited[*page.Url] = *page
+			visits++
 
 			if page.IsMatch(targetPage) {
-				fmt.Printf("Found match, took %d follows\n", len(haveVisited))
+				fmt.Printf("Found match, took %d follows\n", visits)
 				break
 			}
 		}
