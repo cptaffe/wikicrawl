@@ -13,7 +13,6 @@ import (
 
 // Wikipedia puts the main section of the article
 // within a div tag with the id "mw-content-text"
-// Loop through attributes for an id
 var divId string = "mw-content-text"
 
 type Page struct {
@@ -53,6 +52,7 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 						depth++
 					} else {
 						// This is a div tag
+						// Loop through attributes for an id
 						more := true
 						for more {
 							key, val, m := z.TagAttr()
