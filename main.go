@@ -39,6 +39,10 @@ import (
 // within a div tag with the id "mw-content-text"
 var divId string = "mw-content-text"
 
+// Wikipedia prefix string checked for in followed links
+// and stripped from url output.
+var prefix = "http://en.wikipedia.org/wiki/"
+
 // Page serves as a linked list of URLs.
 type Page struct {
 
@@ -136,11 +140,13 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 	}
 }
 
+func (page *Page) String() string {
+	return strings.Replace(strings.Replace(strings.Replace(strings.TrimPrefix(page.Url.String(), prefix), "_", " ", -1), "%28", "(", -1), "%29", ")", -1)
+}
+
 func main() {
 	haveVisited := make(map[url.URL]Page)
 	visits := 0
-
-	prefix := "http://en.wikipedia.org/wiki/"
 
 	var targetRegex *regexp.Regexp
 	var startPage *Page
@@ -168,8 +174,23 @@ func main() {
 	done := make(chan bool)
 	go func () {
 		page := startPage
+		lastlen := 0
 		for {
-			fmt.Printf("Have Followed %d links\r", visits)
+
+			// Paint over last printing
+			for i := 0; i < lastlen; i++ {
+				fmt.Print(" ")
+			}
+			fmt.Print("\r")
+
+			str := fmt.Sprintf("Follow %d, %s\r", visits, page)
+			if len(str) > 40 {
+				lastlen = 40
+				fmt.Print(str[:36], "...\r")
+			} else {
+				lastlen = len(str)
+				fmt.Print(str)
+			}
 
 			haveVisited[*page.Url] = *page
 			visits++
@@ -243,7 +264,7 @@ func main() {
 	page := startPage
 	i := 0
 	for page != nil {
-		fmt.Printf("%d: %s\n", i, page.Url)
+		fmt.Printf("Article %d, %s\n", i, page)
 		page = page.Next
 		i++
 	}
