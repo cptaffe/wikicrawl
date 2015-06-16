@@ -31,6 +31,7 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 
 	z := html.NewTokenizer(body)
 	inBody := false
+	inP := false
 	depth := 0
 	for {
 		tt := z.Next()
@@ -47,13 +48,13 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 					} else {
 						// This is a div tag
 						// Wikipedia puts the main section of the article
-						// within a div tag with the id "bodyContent"
+						// within a div tag with the id "mw-content-text"
 						// Loop through attributes for an id
 						more := true
 						for more {
 							key, val, m := z.TagAttr()
 							more = m
-							if string(key) == "id" && string(val) == "bodyContent" {
+							if string(key) == "id" && string(val) == "mw-content-text" {
 								inBody = true
 							}
 						}
@@ -63,7 +64,13 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 						inBody = false
 					}
 				}
-			} else if inBody && tt == html.StartTagToken && string(tn) == "a" {
+			} else if inBody && string(tn) == "p" {
+				if tt == html.StartTagToken {
+					inP = true
+				} else {
+					inP = false
+				}
+			} else if inP && tt == html.StartTagToken && string(tn) == "a" {
 				// This is an anchor tag
 				// This is an anchor tag in a div
 				// Check if it has an href attribute
@@ -96,19 +103,20 @@ func main() {
 	haveVisited := make(map[url.URL]Page)
 	visits := 0
 
+	prefix := "http://en.wikipedia.org/wiki/"
+
 	var targetPage *Page
 	var startPage *Page
 
 	if len(os.Args) == 3 {
-
-		ur, err := url.Parse(os.Args[1])
+		ur, err := url.Parse(prefix+os.Args[1])
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		targetPage = &Page{Url: ur}
 
-		ur, err = url.Parse(os.Args[2])
+		ur, err = url.Parse(prefix+os.Args[2])
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -125,8 +133,14 @@ func main() {
 		page := startPage
 		for {
 			pg, err := page.FollowLink(func(ur *url.URL) bool {
+				// Don't Revisit pages
 				p := haveVisited[*ur]
 				if p.Url != nil {
+					return false
+				}
+
+				// Don't leave the world of Wikipedia
+				if len(ur.String()) < len(prefix) || ur.String()[:len(prefix)] != prefix {
 					return false
 				}
 				return true
