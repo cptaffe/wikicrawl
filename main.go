@@ -1,3 +1,26 @@
+
+//
+// ffcrawl [target regexp] [start article]
+//
+// Takes a regexp expression matching a target article name
+// and a start article name, e.g. "ffcrawl Car Vehicle"
+// will accept any url with "Car" in the name as a target,
+// and begins at http://en.wikipedia.org/wiki/Vehicle
+//
+// Starting at the start article, the program follows the first
+// link in the article's text that links directly to another
+// article until the current article matches the target regexp.
+//
+// If the traversal is taking too long, sending SIGINT
+// (pressing ^C usually) will print the trip so far. Each
+// url next to its offset from the original page.
+//
+// This tool was created in part because during school there
+// was once a saying that if one followed the first link on
+// a Wikipedia page and repeated this process long enough,
+// one would eventually get to a certian prominent historical
+// figure's Wikipedia page. Now, you can test how many links
+// it takes to do it, and get a readout of the trip.
 package main
 
 import (
@@ -9,22 +32,30 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"regexp"
 )
 
 // Wikipedia puts the main section of the article
 // within a div tag with the id "mw-content-text"
 var divId string = "mw-content-text"
 
+// Page serves as a linked list of URLs.
 type Page struct {
+
+	// URL of this page.
 	Url   *url.URL
+
+	// Page created from an accepted link on this page.
 	Next  *Page
 }
 
-func (page *Page) IsMatch(opage *Page) bool {
-	return page.Url.String() == opage.Url.String()
-}
-
-// Gets the first link of a wikipedia page.
+// FollowLink returns the first accepted link from a Page.
+// The body of the response from a GET request on the Page's Url
+// is parsed as html for a <p> tag within a <div> tag with an id
+// attribute matching divId.
+// An accepted html tag sequence may look like the following
+// psuedo regex expression:
+// <div id={divId}><div>+<p>+<a href={accepted url}>...
 func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 	resp, err := http.Get(page.Url.String())
 	if err != nil {
@@ -108,17 +139,17 @@ func main() {
 
 	prefix := "http://en.wikipedia.org/wiki/"
 
-	var targetPage *Page
+	var targetRegex *regexp.Regexp
 	var startPage *Page
 
 	if len(os.Args) == 3 {
-		ur, err := url.Parse(prefix+os.Args[1])
+		var err error
+		targetRegex, err = regexp.Compile(os.Args[1])
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal(err.Error())
 		}
 
-		targetPage = &Page{Url: ur}
-
+		var ur *url.URL
 		ur, err = url.Parse(prefix+os.Args[2])
 		if err != nil {
 			log.Fatal(err)
@@ -135,6 +166,18 @@ func main() {
 	go func () {
 		page := startPage
 		for {
+			fmt.Printf("Have Followed %d links\r", visits)
+
+			haveVisited[*page.Url] = *page
+			visits++
+
+			// Match against user provided regex
+			if targetRegex.MatchString(strings.TrimPrefix(page.Url.String(), prefix)) {
+				fmt.Printf("Found match, took %d follows\n", visits)
+				break
+			}
+
+			// Get next link
 			pg, err := page.FollowLink(func(ur *url.URL) bool {
 				// Don't Revisit pages
 				p := haveVisited[*ur]
@@ -180,16 +223,6 @@ func main() {
 				log.Fatal(err)
 			}
 			page = pg
-
-			fmt.Printf("Have Followed %d links\r", visits)
-
-			haveVisited[*page.Url] = *page
-			visits++
-
-			if page.IsMatch(targetPage) {
-				fmt.Printf("Found match, took %d follows\n", visits)
-				break
-			}
 		}
 		done <- true
 	}()
