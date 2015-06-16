@@ -1,9 +1,9 @@
 
 //
-// ffcrawl [target regexp] [start article]
+// wikicrawl [target regexp] [start article]
 //
 // Takes a regexp expression matching a target article name
-// and a start article name, e.g. "ffcrawl Car Vehicle"
+// and a start article name, e.g. "wikicrawl Car Vehicle"
 // will accept any url with "Car" in the name as a target,
 // and begins at http://en.wikipedia.org/wiki/Vehicle
 //
@@ -42,11 +42,14 @@ var divId string = "mw-content-text"
 // Page serves as a linked list of URLs.
 type Page struct {
 
-	// URL of this page.
+	// URL of this page
 	Url   *url.URL
 
-	// Page created from an accepted link on this page.
+	// Child page
 	Next  *Page
+
+	// Parent page
+	Prev  *Page
 }
 
 // FollowLink returns the first accepted link from a Page.
