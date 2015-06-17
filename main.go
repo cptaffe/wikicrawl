@@ -45,15 +45,14 @@ var prefix = "http://en.wikipedia.org/wiki/"
 
 // Page serves as a linked list of URLs.
 type Page struct {
+	// String it was redirected with
+	Title string
 
 	// URL of this page
 	Url   *url.URL
 
 	// Child page
 	Next  *Page
-
-	// Parent page
-	Prev  *Page
 }
 
 // FollowLink returns the first accepted link from a Page.
@@ -116,6 +115,7 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 				// This is an anchor tag in a div
 				// Check if it has an href attribute
 				more := true
+				pg := &Page{}
 				for more {
 					key, val, m := z.TagAttr()
 					more = m
@@ -127,21 +127,18 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 							// skip to the second url
 							break
 						}
-
-						if acceptFunc(ur) {
-							p := &Page{Url: ur}
-							page.Next = p
-							return p, nil
-						}
+						pg.Url = ur
+					} else if string(key) == "title" {
+						pg.Title = string(val)
 					}
+				}
+				if acceptFunc(pg.Url) {
+					page.Next = pg
+					return pg, nil
 				}
 			}
 		}
 	}
-}
-
-func (page *Page) String() string {
-	return strings.Replace(strings.Replace(strings.Replace(strings.TrimPrefix(page.Url.String(), prefix), "_", " ", -1), "%28", "(", -1), "%29", ")", -1)
 }
 
 func main() {
@@ -165,7 +162,7 @@ func main() {
 		}
 
 		// Initial page to start crawler
-		startPage = &Page{Url: ur}
+		startPage = &Page{Title: os.Args[2], Url: ur}
 	} else {
 		fmt.Println("Needs url to start crawler")
 		return
@@ -174,32 +171,18 @@ func main() {
 	done := make(chan bool)
 	go func () {
 		page := startPage
-		lastlen := 0
 		for {
-
-			// Paint over last printing
-			for i := 0; i < lastlen; i++ {
-				fmt.Print(" ")
-			}
-			fmt.Print("\r")
-
-			str := fmt.Sprintf("Follow %d, %s\r", visits, page)
-			if len(str) > 40 {
-				lastlen = 40
-				fmt.Print(str[:36], "...\r")
-			} else {
-				lastlen = len(str)
-				fmt.Print(str)
-			}
+			fmt.Printf("Follow %d, link to %s\n", visits, page.Title)
 
 			haveVisited[*page.Url] = *page
-			visits++
 
 			// Match against user provided regex
 			if targetRegex.MatchString(strings.TrimPrefix(page.Url.String(), prefix)) {
 				fmt.Printf("Found match, took %d follows\n", visits)
 				break
 			}
+
+			visits++
 
 			// Get next link
 			pg, err := page.FollowLink(func(ur *url.URL) bool {
@@ -228,7 +211,8 @@ func main() {
 				return true
 			})
 			if err != nil {
-				if err.Error() == "EOF" {
+				str := err.Error()
+				if len(str) >= 3 && str[len(str)-3:] == "EOF" {
 					// Could not find a link on this file,
 					// Go back up one page
 					lp := startPage
@@ -261,10 +245,11 @@ func main() {
 	}
 
 	// Print path
+	fmt.Printf("=== Link path of length %d ===\n", visits)
 	page := startPage
 	i := 0
 	for page != nil {
-		fmt.Printf("Article %d, %s\n", i, page)
+		fmt.Printf("Article %d, %s\n", i, strings.TrimPrefix(page.Url.String(), prefix))
 		page = page.Next
 		i++
 	}
