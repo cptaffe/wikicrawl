@@ -33,6 +33,7 @@ import (
 	"os/signal"
 	"strings"
 	"regexp"
+	"container/list"
 )
 
 // Wikipedia puts the main section of the article
@@ -50,9 +51,6 @@ type Page struct {
 
 	// URL of this page
 	Url   *url.URL
-
-	// Child page
-	Next  *Page
 }
 
 // FollowLink returns the first accepted link from a Page.
@@ -133,7 +131,6 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 					}
 				}
 				if acceptFunc(pg.Url) {
-					page.Next = pg
 					return pg, nil
 				}
 			}
@@ -143,10 +140,9 @@ func (page *Page) FollowLink(acceptFunc func(ur *url.URL) bool) (*Page, error) {
 
 func main() {
 	haveVisited := make(map[url.URL]Page)
-	visits := 0
 
 	var targetRegex *regexp.Regexp
-	var startPage *Page
+	pageList := list.New()
 
 	if len(os.Args) == 3 {
 		var err error
@@ -162,7 +158,7 @@ func main() {
 		}
 
 		// Initial page to start crawler
-		startPage = &Page{Title: os.Args[2], Url: ur}
+		pageList.PushBack(&Page{Title: os.Args[2], Url: ur})
 	} else {
 		fmt.Println("Needs url to start crawler")
 		return
@@ -170,19 +166,19 @@ func main() {
 
 	done := make(chan bool)
 	go func () {
-		page := startPage
 		for {
-			fmt.Printf("Follow %d, link to %s\n", visits, page.Title)
+			listItem := pageList.Back()
+			page := listItem.Value.(*Page)
+
+			fmt.Printf("Follow %d, link to %s\n", pageList.Len(), page.Title)
 
 			haveVisited[*page.Url] = *page
 
 			// Match against user provided regex
 			if targetRegex.MatchString(strings.TrimPrefix(page.Url.String(), prefix)) {
-				fmt.Printf("Found match, took %d follows\n", visits)
+				fmt.Printf("Found match, took %d follows\n", pageList.Len())
 				break
 			}
-
-			visits++
 
 			// Get next link
 			pg, err := page.FollowLink(func(ur *url.URL) bool {
@@ -207,7 +203,6 @@ func main() {
 					return false
 				}
 
-
 				return true
 			})
 			if err != nil {
@@ -215,22 +210,17 @@ func main() {
 				if len(str) >= 3 && str[len(str)-3:] == "EOF" {
 					// Could not find a link on this file,
 					// Go back up one page
-					lp := startPage
-					p := startPage
-					for p.Next != nil {
-						lp = p
-						p = p.Next
-					}
-					if (lp == startPage) {
+					e := listItem.Prev()
+					if e == nil {
 						log.Fatal("Cannot find links on provided page")
 					}
-					page = lp
-					visits--
+					pageList.Remove(e)
+					page = e.Value.(*Page)
 					continue
 				}
 				log.Fatal(err)
 			}
-			page = pg
+			pageList.PushBack(pg)
 		}
 		done <- true
 	}()
@@ -245,12 +235,11 @@ func main() {
 	}
 
 	// Print path
-	fmt.Printf("=== Link path of length %d ===\n", visits)
-	page := startPage
+	fmt.Printf("=== Link path of length %d ===\n", pageList.Len())
 	i := 0
-	for page != nil {
+	for e := pageList.Front(); e != nil; e = e.Next() {
+		page := e.Value.(*Page)
 		fmt.Printf("Article %d, %s\n", i, strings.TrimPrefix(page.Url.String(), prefix))
-		page = page.Next
 		i++
 	}
 }
